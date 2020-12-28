@@ -24,109 +24,79 @@ class ShannonsDaemon(object):
             self.min_lot[self.JPY] = 1.
 
 
-    def estimate_assets(self, assets, ticker):
-        """returns total assets and each value with given ticker
-        """
-        real_time_assets = {
-            symbol: assets[symbol]["amount"] * ticker[symbol]["last"]
-            for symbol in self.symbols
-        }
-        total_assets = sum(real_time_assets.values())
-        return real_time_assets, total_assets
-
-
     def rebalance(self, assets, ticker):
-        values, total = self.estimate_assets(assets, ticker)
-        balance_val = total / len(values)
-        new_assets = {}
-        for symbol in sorted(self.symbols,
-                             key=lambda s: values[s]/balance_val,
-                             reverse=True):
-            r = values[symbol] / balance_val
-            amount = assets[symbol]["amount"]
-            rate = ticker[symbol]["last"]
-            n = abs(amount - balance_val/rate)
-            if r >= 1:
-                side = -1
-                size = ceil(n / self.min_lot[symbol]) * self.min_lot[symbol]
-            else:
-                side = 1
-                size = floor(n / self.min_lot[symbol]) * self.min_lot[symbol]
-            size = round(min(size, self.max_lot[symbol]), self.round_level)
-
-            new_assets[symbol] = {
-                "side": side,
-                "amount": round(amount + side * size, self.round_level),
-                "size": size,
-                "est_price": size * ticker[symbol]["last"]
-            }
-
-        return new_assets
-
-
-    def entropy(self, assets, ticker):
-        """return entropy with value
-        Arg:
-            asset: dict, market values
+        """returns list of orders
         """
-        values, total = self.estimate_assets(assets, ticker)
-        ratios = [v/total for v in values.values()]
-        return sum(-r*log2(r) for r in ratios)
+        # solve balanced price
+        total = 0
+        for symbol in self.symbols:
+            if symbol == self.JPY:
+                total += assets[symbol]["amount"]
+            else: # crypto
+                total += assets[symbol]["amount"] * ticker[symbol].last
+        balanced_val = total / len(self.symbols)
 
-
-
-    def order(self, new_assets):
-        success = True
-        # make the order
-        resp = {}
-        for symbol, v in new_assets.items():
+        # make orders
+        orders = []
+        size = lambda s, n: round(min(n * self.min_lot[s], self.max_lot[s]), self.round_level)
+        for symbol in self.symbols:
             if symbol == self.JPY:
                 continue
 
-            if v["size"] < self.min_lot[symbol]:
-                continue
-            
-            # fetch limit price
-            side = v["side"]
-            orderbooks = self.api.get_orderbooks(symbol)
-            if side == 1:
-                price = orderbooks["bids"][0]["price"]
-            elif side == -1:
-                price = orderbooks["asks"][0]["price"]
+            amount = assets[symbol]["amount"]
+            rate = ticker[symbol].last
+            if amount*rate / balanced_val < 1:
+                side = Side.BUY
             else:
-                print(f"invalid side: {side}")
-                continue
-            #
-            order = Order(
-                symbol = symbol,
-                side = side,
-                size = v["size"],
-                execution_type = "LIMIT",
-                price = price,
-                time_in_force = "SOK"
-            )
-            resp[symbol] = self.api.post_order(order)
-            sleep(0.4)
-        return resp
+                side = Side.SELL
+            nlot = ceil(abs(amount - balanced_val/rate) / self.min_lot[symbol])
+            
+            # decide number of lot using entropy
+            ratio = lambda n: (amount + side.value*size(symbol, n)) / balanced_val
+            r0, r1 = ratio(nlot), ratio(nlot-1)
+            if -r0*log2(r0) < -r1*log2(r1):
+                nlot = nlot - 1
+
+            if nlot > 0:
+                # decide price
+                if side is Side.BUY:
+                    pass
+                else:
+                    pass
+                
+                orders.append(
+                    Order(
+                        symbol = symbol,
+                        side = side,
+                        size = size(symbol, nlot),
+                        execution_type = ExecutionType.LIMIT,
+                        price = ticker[symbol].last,
+                        time_in_force = "SOK"
+                    )
+                )
+        return orders
 
 
     def run(self):
         if not self.api.is_available():
             raise ValueError("Exchange is not available now")
 
-        ticker = self.api.get_ticker(self.symbols)
         assets = self.api.get_assets(self.symbols)
+        ticker = self.api.get_ticker(self.symbols)
+        orders = self.rebalance(assets, ticker)
 
-        if self.JPY not in ticker:
-            ticker[self.JPY] = {}
-            ticker[self.JPY]["last"] = 1.
+        # post orders
+        for order in orders:
+            pprint(order)
+            # self.api.post_order(order)
+            # sleep(0.4)
 
-        new_assets = self.rebalance(assets, ticker)
-        pprint(new_assets)
 
-        if self.entropy(new_assets, ticker) >\
-           self.entropy(assets, ticker):
-            print("POST ORDER")
-            resp = self.order(new_assets)
-            pprint(resp)
-            
+    def run_forever(self):
+        while True:
+            try:
+                self.run()
+            except Exception as e:
+                print(f"Error: {e}")
+            finally:
+                sleep(self.delay)

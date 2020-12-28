@@ -13,9 +13,9 @@ def test_gmo_order():
     if api.is_available():
         order = Order(
             symbol = "BTC",
-            side = 1,
+            side = Side.BUY,
             size = 0.0001,
-            execution_type = "LIMIT",
+            execution_type = ExecutionType.LIMIT,
             price = 2600000,
             time_in_force = "SOK"
         )

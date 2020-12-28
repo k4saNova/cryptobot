@@ -3,22 +3,16 @@ import hmac
 import hashlib
 import time
 from datetime import datetime
-from enum import Enum, auto
 
 from abc import ABCMeta, abstractmethod
 from .utils import *
-
-
-class Exchange(Enum):
-    GMO = auto()
-    bitFlyer = auto()
-    Simu = auto()
+from .data import *
 
 
 class Api(metaclass=ABCMeta):
     # exchange name
     exchange = None
-    
+
     @abstractmethod
     def __init__(self, api_key, secret_key):
         raise NotImplementedError()
@@ -40,6 +34,8 @@ class Api(metaclass=ABCMeta):
 
     @abstractmethod
     def get_orderbooks(self):
+        """ returns orderbooks
+        """
         raise NotImplementedError()
 
 
@@ -55,14 +51,14 @@ class Api(metaclass=ABCMeta):
         """posts the order and returns a responce
         Args:
             order: Order object (see data.py)
-        """        
+        """
         raise NotImplementedError()
 
 
 
 class SimulationApi(Api):
     exchange = Exchange.Simu.name
-    
+
     def __init__(self):
         pass
 
@@ -82,7 +78,7 @@ class SimulationApi(Api):
 
 class GmoApi(Api):
     exchange = Exchange.GMO.name
-    
+
     def __init__(self, api_key, secret_key):
         self.api_key = api_key
         self.secret_key = secret_key
@@ -127,13 +123,20 @@ class GmoApi(Api):
     def get_ticker(self, symbols):
         path = "/v1/ticker"
         resp = http_get(self.public_endpoint + path)
+
         ticker = {}
         for data in resp["data"]:
-            if data["symbol"] in symbols:
-                ticker[data["symbol"]] = {
-                    key: float(data[key])
-                    for key in ["ask", "bid", "last", "volume"]
-                }
+            s = data["symbol"]
+            if s not in symbols:
+                continue
+
+            ticker[s] = Ticker(
+                ask = float(data["ask"]),
+                bid = float(data["bid"]),
+                last = float(data["last"]),
+                volume = float(data["volume"]),
+                timestamp = data["timestamp"]
+            )
         return ticker
 
 
@@ -163,21 +166,25 @@ class GmoApi(Api):
         return assets
 
 
-    def post_order(self, order):        
-        # make payload
+    def post_order(self, order):
         payload = {}
+
         # required fields
         payload["symbol"] = order.symbol
-        if order.side == 1:
-            payload["side"] = "BUY"
-        elif order.side == -1:
-            payload["side"] = "SELL"
+
+        if type(order.side) is Side:
+            payload["side"] = order.side.name
         else:
-            raise ValueError(f"invalid side: {side}")
-        
+            raise TypeError(f"{type(order.side)}: use Side")
+
         payload["size"] = str(order.size)
-        payload["executionType"] = order.execution_type
-        if order.execution_type != "MARKET":
+
+        if type(order.execution_type) is ExecutionType:
+            payload["executionType"] = order.execution_type.name
+        else:
+            raise TypeError(f"{type(order.execution_type)}: use ExecutionType")
+
+        if order.execution_type is not ExecutionType.MARKET:
             if order.price:
                 payload["price"] = str(order.price)
             else:
@@ -191,7 +198,7 @@ class GmoApi(Api):
         if order.cancel_before:
             payload["cancelBefore"] = order.cancel_before
 
-        
+
         # post order
         path = "/v1/order"
         resp = http_post(self.private_endpoint + path,
@@ -203,7 +210,7 @@ class GmoApi(Api):
 
 class BitFlyerApi(Api):
     exchange = Exchange.bitFlyer.name
-    
+
     def __init__(self, api_key, secret_key):
         raise NotImplementedError()
 

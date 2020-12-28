@@ -1,0 +1,23 @@
+# exchange name
+# supported: "GMO", "bitFlyer", "Simu"
+exchange:
+
+# API-KEY
+api-key:
+
+# SECRET-KEY
+secret-key:
+
+symbols: []
+  
+# minimum lot
+# SYMBOL_i: MINLOT_i
+min-lot:
+  
+# maximum lot
+# SYMBOL_i: MAXLOT_i
+max-lot:
+  
+# delay in second
+delay: 15
+

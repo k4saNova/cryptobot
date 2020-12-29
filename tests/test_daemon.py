@@ -11,6 +11,7 @@ def test_daemon():
                             config["symbols"],
                             config["min-lot"],
                             config["max-lot"],
+                            config["step-values"],
                             3)
     daemon.run()
 

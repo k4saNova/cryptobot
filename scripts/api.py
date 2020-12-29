@@ -47,10 +47,24 @@ class Api(metaclass=ABCMeta):
 
 
     @abstractmethod
-    def post_order(self):
+    def get_orders(self, order_ids):
+        """gets order information of order_ids
+        """
+        raise NotImplementedError()
+
+
+    @abstractmethod
+    def post_order(self, order):
         """posts the order and returns a responce
         Args:
             order: Order object (see data.py)
+        """
+        raise NotImplementedError()
+
+
+    @abstractmethod
+    def post_cancel_orders(self, order_ids):
+        """cancel specified orders
         """
         raise NotImplementedError()
 
@@ -69,6 +83,9 @@ class SimulationApi(Api):
         pass
 
     def get_orderbooks(self):
+        pass
+
+    def get_orders(self, order_ids):
         pass
 
     def post_order(self, order):
@@ -111,6 +128,16 @@ class GmoApi(Api):
         }
 
 
+    def validate_response(self, resp):
+        """returns resp['data'] if resp['status'] == 0
+        """
+        if resp["status"] == 0:
+            # success
+            return resp["data"]
+        else:
+            raise RuntimeError(resp["messages"])
+
+
     def is_available(self):
         path = "/v1/status"
         resp = http_get(self.public_endpoint + path)
@@ -144,7 +171,7 @@ class GmoApi(Api):
         path = "/v1/orderbooks"
         resp = http_get(self.public_endpoint + path,
                         params={"symbol": symbol})
-        data = resp["data"]
+        data = self.validate_response(resp)
         sort_with_price = lambda x: float(x["price"])
         data["asks"].sort(key=sort_with_price)
         data["bids"].sort(key=sort_with_price, reverse=True)
@@ -155,40 +182,45 @@ class GmoApi(Api):
         path = "/v1/account/assets"
         resp = http_get(self.private_endpoint + path,
                         headers=self.get_api_header("GET", path))
-
+        data = self.validate_response(resp)
         assets = {}
-        for data in resp["data"]:
-            if data["symbol"] in symbols:
-                assets[data["symbol"]] = {
-                    key: float(data[key])
+        for d in data:
+            if d["symbol"] in symbols:
+                assets[d["symbol"]] = {
+                    key: float(d[key])
                     for key in ["amount", "available", "conversionRate"]
                 }
         return assets
 
 
-    def post_order(self, order):
-        payload = {}
+    def get_orders(self, order_ids):
+        path = "/v1/orders"
+        if type(order_ids) is list:
+            params = {"orderId": ",".join(order_ids)}
+        else:
+            # single order
+            params = {"orderId": order_ids}
+            
+        resp = http_get(self.private_endpoint + path,
+                        params=params,
+                        headers=self.get_api_header("GET", path))
+        data = self.validate_response(resp)
+        return data
 
+
+
+    def post_order(self, order):
+        if type(order) is not Order:
+            raise TypeError(f"{type(order)}: use Order")
+
+        payload = {}
         # required fields
         payload["symbol"] = order.symbol
-
-        if type(order.side) is Side:
-            payload["side"] = order.side.name
-        else:
-            raise TypeError(f"{type(order.side)}: use Side")
-
+        payload["side"] = order.side.name
         payload["size"] = str(order.size)
-
-        if type(order.execution_type) is ExecutionType:
-            payload["executionType"] = order.execution_type.name
-        else:
-            raise TypeError(f"{type(order.execution_type)}: use ExecutionType")
-
+        payload["executionType"] = order.execution_type.name
         if order.execution_type is not ExecutionType.MARKET:
-            if order.price:
-                payload["price"] = str(order.price)
-            else:
-                raise ValueError("Specify price")
+            payload["price"] = order.price.value
 
         # optional fields
         if order.time_in_force:
@@ -204,8 +236,24 @@ class GmoApi(Api):
         resp = http_post(self.private_endpoint + path,
                          headers=self.get_api_header("POST", path, payload),
                          payload=payload)
-        return resp
+        order_id = self.validate_response(resp)
+        return order_id
 
+
+    def post_cancel_orders(self, order_ids):
+        # single order
+        if type(order_ids) is not list:
+            order_ids = [order_ids]
+
+        payload = {
+            "orderIds": order_ids
+        }
+        path = "/v1/cancelOrders"
+        resp = http_post(self.private_endpoint + path,
+                         headers=self.get_api_header("POST", path, payload),
+                         payload=payload)
+        data = self.validate_response(resp)
+        return data
 
 
 class BitFlyerApi(Api):
@@ -225,6 +273,10 @@ class BitFlyerApi(Api):
 
     def post_order(self):
         raise NotImplementedError()
+
+    def post_cancel_orders(self):
+        raise NotImplementedError()
+
 
 
 def get_crypto_api_client(name, api_key, secret_key):

@@ -8,16 +8,23 @@ api-key:
 # SECRET-KEY
 secret-key:
 
+# list of symbols
+# SYMBOL_1 (str), ...
 symbols: []
-  
+
 # minimum lot
-# SYMBOL_i: MINLOT_i
+# SYMBOL_i (str): MINLOT_i (number)
 min-lot:
   
 # maximum lot
-# SYMBOL_i: MAXLOT_i
+# SYMBOL_i (str): MAXLOT_i (number)
 max-lot:
+
+# step values
+# SYMBOL_i (str): STEPVALUE_i (str)
+step-values:
   
 # delay in second
 delay: 15
 
+  

@@ -8,8 +8,16 @@ class ShannonsDaemon(object):
     """auto-trading bot based on Shannon's Demon.
     """
     def __init__(self, api, symbols,
-                 min_lot, max_lot,
+                 min_lot, max_lot, step_values,
                  delay=15, jpy_symbol="JPY"):
+        """
+        Args:
+            api: api client (see api.py)
+            symbols: list of coins' symbol
+            min_lot: dict of minimum lot
+            max_lot: dict of maximum lot
+            step_value: step values of each coin
+        """
         self.api = api
         self.min_lot = min_lot
         self.max_lot = max_lot
@@ -17,11 +25,10 @@ class ShannonsDaemon(object):
         self.JPY = jpy_symbol
         self.round_level = 8
 
+        Price.step_values = step_values
         self.symbols = symbols
         if self.JPY not in symbols:
             self.symbols.append(self.JPY)
-        if self.JPY not in min_lot:
-            self.min_lot[self.JPY] = 1.
 
 
     def rebalance(self, assets, ticker):
@@ -50,7 +57,7 @@ class ShannonsDaemon(object):
             else:
                 side = Side.SELL
             nlot = ceil(abs(amount - balanced_val/rate) / self.min_lot[symbol])
-            
+
             # decide number of lot using entropy
             ratio = lambda n: (amount + side.value*size(symbol, n)) / balanced_val
             r0, r1 = ratio(nlot), ratio(nlot-1)
@@ -60,17 +67,17 @@ class ShannonsDaemon(object):
             if nlot > 0:
                 # decide price
                 if side is Side.BUY:
-                    pass
+                    p = ticker[symbol].bid
                 else:
-                    pass
-                
+                    p = ticker[symbol].ask
+
                 orders.append(
                     Order(
                         symbol = symbol,
                         side = side,
                         size = size(symbol, nlot),
                         execution_type = ExecutionType.LIMIT,
-                        price = ticker[symbol].last,
+                        price = Price(symbol, p),
                         time_in_force = "SOK"
                     )
                 )
@@ -87,9 +94,10 @@ class ShannonsDaemon(object):
 
         # post orders
         for order in orders:
-            pprint(order)
-            # self.api.post_order(order)
-            # sleep(0.4)
+            # pprint(order)
+            success, resp = self.api.post_order(order)
+            pprint(resp)
+            sleep(0.4)
 
 
     def run_forever(self):

@@ -162,3 +162,6 @@ class Ticker:
         self.bid = float(self.bid)
         self.last = float(self.last)
         self.volume = float(self.volume)
+
+
+    

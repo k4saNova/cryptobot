@@ -20,7 +20,7 @@ class Api(metaclass=ABCMeta):
 
     @abstractmethod
     def is_available(self):
-        """returns True if the market is available
+        """returns True if the exchange opens
         """
         raise NotImplementedError()
 
@@ -28,6 +28,13 @@ class Api(metaclass=ABCMeta):
     @abstractmethod
     def get_ticker(self):
         """returns ticker
+        """
+        raise NotImplementedError()
+
+
+    @abstractmethod
+    def get_execution_history(self):
+        """returns trade history
         """
         raise NotImplementedError()
 
@@ -55,7 +62,7 @@ class Api(metaclass=ABCMeta):
 
     @abstractmethod
     def post_order(self, order):
-        """posts the order and returns a responce
+        """posts an order and returns the order id
         Args:
             order: Order object (see data.py)
         """
@@ -142,6 +149,20 @@ class GmoApi(Api):
             )
         return ticker
 
+
+    def get_execution_history(self, symbol, page=1, count=100):
+        path = "/v1/trades"
+        params = {
+            "symbol": symbol,
+            "page": page,
+            "count": count = min(count, 100)
+        }
+        resp = http_get(self.public_endpoint + path,
+                        params = params)
+        data = self.validate_response(resp)
+        return data["list"]
+
+        
 
     def get_orderbooks(self, symbol):
         path = "/v1/orderbooks"
@@ -235,7 +256,6 @@ class GmoApi(Api):
         if order.cancel_before:
             payload["cancelBefore"] = order.cancel_before
 
-
         # post order
         path = "/v1/order"
         resp = http_post(self.private_endpoint + path,
@@ -259,8 +279,8 @@ class GmoApi(Api):
         else:
             raise TypeError(f"{type(orders)}: use Order or list of Order")
         order_ids.sort(key=lambda x: int(x))
-        
-        path = "/v1/cancelOrders"        
+
+        path = "/v1/cancelOrders"
         payload = {
             "orderIds": order_ids
         }

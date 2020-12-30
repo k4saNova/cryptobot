@@ -1,3 +1,4 @@
+import os
 import json
 import hmac
 import hashlib
@@ -28,6 +29,13 @@ class Api(metaclass=ABCMeta):
     @abstractmethod
     def get_ticker(self):
         """returns ticker
+        """
+        raise NotImplementedError()
+
+
+    @abstractmethod
+    def download_execution_history(self, date):
+        """returns trade history
         """
         raise NotImplementedError()
 
@@ -86,6 +94,7 @@ class GmoApi(Api):
         self.ws_public_endpoint = "wss://api.coin.z.com/ws/public"
         self.private_endpoint = "https://api.coin.z.com/private"
         self.ws_private_endpoint = "wss://api.coin.z.com/ws/private"
+        self.download_endpoint = "https://api.coin.z.com/data/trades"
 
 
     def get_api_header(self, method, path, payload={}):
@@ -150,19 +159,30 @@ class GmoApi(Api):
         return ticker
 
 
+    def download_execution_history(self, symbol, date, path):
+        fname = date.strftime("%Y%m%d") + "_" + symbol + ".csv.gz"
+
+        url = "/".join([self.download_endpoint,
+                        symbol,
+                        str(date.year),
+                        str(date.month).zfill(2),
+                        fname])
+        download(url, os.path.join(path,fname))
+
+
     def get_execution_history(self, symbol, page=1, count=100):
         path = "/v1/trades"
         params = {
             "symbol": symbol,
             "page": page,
-            "count": count = min(count, 100)
+            "count": min(count, 100)
         }
         resp = http_get(self.public_endpoint + path,
                         params = params)
         data = self.validate_response(resp)
         return data["list"]
 
-        
+
 
     def get_orderbooks(self, symbol):
         path = "/v1/orderbooks"

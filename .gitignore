@@ -2,6 +2,7 @@ __pycache__/
 
 # 
 data/config/
+data/history/
 
 # virtual env
 venv/

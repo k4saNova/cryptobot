@@ -4,14 +4,17 @@ import json
 import yaml
 from datetime import datetime, timedelta
 
-def http_get(url, params={}, headers={}, stream=False):
+def http_get(url, params={}, headers={}, jsonify=True, stream=False):
     """returns the jsonize responce that is fetched from the url
     if failed, it returns None
     """
     resp = requests.get(url, params=params,
                         headers=headers, stream=stream)
     resp.raise_for_status()
-    return resp.json()
+    if jsonify:
+        return resp.json()
+    else:
+        return resp
 
 
 def http_post(url, payload={}, headers={}):
@@ -20,16 +23,16 @@ def http_post(url, payload={}, headers={}):
     resp.raise_for_status()
     return resp.json()
 
-    
+
 def download(url, path):
     resp = http_get(url, jsonify=False, stream=True)
     resp.raise_for_status()
 
     with open(path, "wb") as f:
         resp.raw.decode_content = True
-        shutil.copyfileobj(resp.raw, f)    
+        shutil.copyfileobj(resp.raw, f)
 
-    
+
 def daterange(start, end=None, time_format="%Y-%m-%d"):
     if type(start) is str:
         start = datetime.strptime(start, time_format).date()
@@ -37,11 +40,11 @@ def daterange(start, end=None, time_format="%Y-%m-%d"):
         end = datetime.strptime(end, time_format).date()
     elif end is None:
         end = datetime.now().date()
-        
+
     for n in range((end - start).days):
         yield start + timedelta(n)
 
-        
+
 def get_timestamp(time_format="%Y-%m-%d", return_str=True):
     now = datetime.now()
     if return_str:
@@ -53,4 +56,3 @@ def get_timestamp(time_format="%Y-%m-%d", return_str=True):
 def load_yaml(path):
     with open(path) as f:
         return yaml.safe_load(f)
-    

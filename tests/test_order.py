@@ -3,6 +3,7 @@ sys.path.append(".")
 
 from pprint import pprint
 from scripts import *
+from scripts.data import *
 
 def test_gmo_order():
     config = load_yaml("data/config/gmo.yaml")
@@ -12,30 +13,38 @@ def test_gmo_order():
 
     if api.is_available():
         Price.step_values = config["step-values"]
-        order = Order(
-            symbol = "BTC",
-            side = Side.BUY,
-            size = 0.0001,
-            execution_type = ExecutionType.LIMIT,
-            price = Price("BTC", 2500000),
-            time_in_force = "SOK"
-        )
-        print("===== ORDER =====")
-        pprint(order)
+        Size.min_sizes = config["min-sizes"]
+        Size.max_sizes = config["max-sizes"]
+        orders = [
+            Order(symbol = "BTC",
+                  side = Side.BUY,
+                  size = Size("BTC", val=0.0001),
+                  execution_type = ExecutionType.LIMIT,
+                  price = Price("BTC", 2500000),
+                  time_in_force = "SOK"),
+            Order(symbol = "LTC",
+                  side = Side.BUY,
+                  size = Size("LTC", lot=1),
+                  execution_type = ExecutionType.LIMIT,
+                  price = Price("LTC", 10000),
+                  time_in_force = "SOK")
+        ]
+        
+        print("===== ORDERS =====")
+        pprint(orders)
+        for order in orders:
+            order.ID = api.post_order(order)
 
-        resp = api.post_order(order)
-        order_id = resp
-        print("===== ORDER ID =====")
-        pprint(resp)
-            
+
         # check order
-        data = api.get_orders([order_id])
-        pprint(data)
-        
+        print("===== POSTING ORDER =====")
+        posting_orders = api.get_orders(orders)
+        pprint(posting_orders)
+
         # cancel order
-        data = api.post_cancel_orders([order_id])
+        data = api.post_cancel_orders(posting_orders)
         pprint(data)
 
-        
+
 if __name__ == '__main__':
     test_gmo_order()

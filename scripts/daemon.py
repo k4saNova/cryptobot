@@ -8,7 +8,7 @@ class ShannonsDaemon(object):
     """auto-trading bot based on Shannon's Demon.
     """
     def __init__(self, api, symbols,
-                 min_lot, max_lot, step_values,
+                 min_sizes, max_sizes, step_values,
                  delay=15, jpy_symbol="JPY"):
         """
         Args:
@@ -19,16 +19,16 @@ class ShannonsDaemon(object):
             step_value: step values of each coin
         """
         self.api = api
-        self.min_lot = min_lot
-        self.max_lot = max_lot
         self.delay = delay
-        self.JPY = jpy_symbol
-        self.round_level = 8
-
-        Price.step_values = step_values
         self.symbols = symbols
+        self.JPY = jpy_symbol
         if self.JPY not in symbols:
             self.symbols.append(self.JPY)
+        self.posting_orders = []
+        Size.min_sizes = min_sizes
+        Size.max_sizes = max_sizes
+        Price.step_values = step_values
+
 
 
     def rebalance(self, assets, ticker):
@@ -38,28 +38,27 @@ class ShannonsDaemon(object):
         total = 0
         for symbol in self.symbols:
             if symbol == self.JPY:
-                total += assets[symbol]["amount"]
+                total += assets[symbol].amount
             else: # crypto
-                total += assets[symbol]["amount"] * ticker[symbol].last
+                total += assets[symbol].amount * ticker[symbol].last
         balanced_val = total / len(self.symbols)
 
         # make orders
         orders = []
-        size = lambda s, n: round(min(n * self.min_lot[s], self.max_lot[s]), self.round_level)
         for symbol in self.symbols:
             if symbol == self.JPY:
                 continue
 
-            amount = assets[symbol]["amount"]
+            amount = assets[symbol].amount
             rate = ticker[symbol].last
             if amount*rate / balanced_val < 1:
                 side = Side.BUY
             else:
                 side = Side.SELL
-            nlot = ceil(abs(amount - balanced_val/rate) / self.min_lot[symbol])
+            nlot = Size(symbol, val=abs(amount - balanced_val/rate)).lot
 
             # decide number of lot using entropy
-            ratio = lambda n: (amount + side.value*size(symbol, n)) / balanced_val
+            ratio = lambda n: (amount + side.value*Size(symbol, lot=n).actual_value) / balanced_val
             r0, r1 = ratio(nlot), ratio(nlot-1)
             if -r0*log2(r0) < -r1*log2(r1):
                 nlot = nlot - 1
@@ -75,7 +74,7 @@ class ShannonsDaemon(object):
                     Order(
                         symbol = symbol,
                         side = side,
-                        size = size(symbol, nlot),
+                        size = Size(symbol, lot=nlot),
                         execution_type = ExecutionType.LIMIT,
                         price = Price(symbol, p),
                         time_in_force = "SOK"
@@ -86,7 +85,7 @@ class ShannonsDaemon(object):
 
     def run(self):
         if not self.api.is_available():
-            raise ValueError("Exchange is not available now")
+            raise RuntimeError("Exchange is not available now")
 
         assets = self.api.get_assets(self.symbols)
         ticker = self.api.get_ticker(self.symbols)
@@ -94,10 +93,14 @@ class ShannonsDaemon(object):
 
         # post orders
         for order in orders:
-            # pprint(order)
-            success, resp = self.api.post_order(order)
-            pprint(resp)
-            sleep(0.4)
+            pprint(order)
+            order.ID = self.api.post_order(order)
+            self.posting_orders.append(order)
+            # print(order_id)
+            # sleep(0.4)
+
+        # check orders
+
 
 
     def run_forever(self):

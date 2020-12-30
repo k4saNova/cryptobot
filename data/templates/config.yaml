@@ -14,11 +14,11 @@ symbols: []
 
 # minimum lot
 # SYMBOL_i (str): MINLOT_i (number)
-min-lot:
+min-sizes:
   
 # maximum lot
 # SYMBOL_i (str): MAXLOT_i (number)
-max-lot:
+max-sizes:
 
 # step values
 # SYMBOL_i (str): STEPVALUE_i (str)

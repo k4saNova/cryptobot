@@ -9,8 +9,8 @@ def test_daemon():
                                 config["secret-key"])
     daemon = ShannonsDaemon(api,
                             config["symbols"],
-                            config["min-lot"],
-                            config["max-lot"],
+                            config["min-sizes"],
+                            config["max-sizes"],
                             config["step-values"],
                             3)
     daemon.run()

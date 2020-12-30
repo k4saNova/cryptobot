@@ -69,30 +69,6 @@ class Api(metaclass=ABCMeta):
         raise NotImplementedError()
 
 
-
-class SimulationApi(Api):
-    exchange = Exchange.Simu.name
-
-    def __init__(self):
-        pass
-
-    def is_available(self):
-        return True
-
-    def get_ticker(self, t):
-        pass
-
-    def get_orderbooks(self):
-        pass
-
-    def get_orders(self, order_ids):
-        pass
-
-    def post_order(self, order):
-        pass
-
-
-
 class GmoApi(Api):
     exchange = Exchange.GMO.name
 
@@ -183,29 +159,57 @@ class GmoApi(Api):
         resp = http_get(self.private_endpoint + path,
                         headers=self.get_api_header("GET", path))
         data = self.validate_response(resp)
+
         assets = {}
         for d in data:
-            if d["symbol"] in symbols:
-                assets[d["symbol"]] = {
-                    key: float(d[key])
-                    for key in ["amount", "available", "conversionRate"]
-                }
+            if d["symbol"] not in symbols:
+                continue
+
+            assets[d["symbol"]] = Asset(
+                amount = d["amount"],
+                available = d["available"]
+            )
         return assets
 
 
-    def get_orders(self, order_ids):
-        path = "/v1/orders"
-        if type(order_ids) is list:
-            params = {"orderId": ",".join(order_ids)}
-        else:
+    def get_orders(self, orders):
+        order_ids = []
+        if type(orders) is list:
+            for order in orders:
+                order_ids.append(order.ID)
+
+        elif type(orders) is Order:
             # single order
-            params = {"orderId": order_ids}
-            
+            order_ids.append(orders.ID)
+            orders = [orders]
+
+        else:
+            raise TypeError(f"{type(orders)}: use Order or list of Order")
+        order_ids.sort(key=lambda x: int(x))
+
+        path = "/v1/orders"
+        params = {"orderId": ",".join(order_ids)}
         resp = http_get(self.private_endpoint + path,
                         params=params,
                         headers=self.get_api_header("GET", path))
         data = self.validate_response(resp)
-        return data
+        data["list"].sort(key=lambda x: x["orderId"])
+
+        for order, d in zip(orders, data["list"]):
+            order.timestamp = d["timestamp"]
+            if d["status"] in ["WAITING", "ORDERED"]:
+                order.status = OrderStatus.ACTIVE
+            elif d["status"] == "EXECUTED":
+                order.status = OrderStatus.COMPLETED
+            elif d["status"] == "CANCELED":
+                order.status = OrderStatus.CANCELED
+            elif d["status"] in ["CANCELING", "MODIFYING"]:
+                order.status = OrderStatus.MODIFYING
+            elif d["status"] == "EXPIRED":
+                order.status = OrderStatus.EXPIRED
+            else:
+                raise RuntimeError(f"undefined status {d['status']}")
+        return orders
 
 
 
@@ -214,10 +218,11 @@ class GmoApi(Api):
             raise TypeError(f"{type(order)}: use Order")
 
         payload = {}
+
         # required fields
         payload["symbol"] = order.symbol
         payload["side"] = order.side.name
-        payload["size"] = str(order.size)
+        payload["size"] = order.size.value
         payload["executionType"] = order.execution_type.name
         if order.execution_type is not ExecutionType.MARKET:
             payload["price"] = order.price.value
@@ -240,15 +245,25 @@ class GmoApi(Api):
         return order_id
 
 
-    def post_cancel_orders(self, order_ids):
-        # single order
-        if type(order_ids) is not list:
-            order_ids = [order_ids]
+    def post_cancel_orders(self, orders):
+        order_ids = []
+        if type(orders) is list:
+            for order in orders:
+                order_ids.append(order.ID)
 
+        elif type(orders) is Order:
+            # single order
+            order_ids.append(orders.ID)
+            orders = [orders]
+
+        else:
+            raise TypeError(f"{type(orders)}: use Order or list of Order")
+        order_ids.sort(key=lambda x: int(x))
+        
+        path = "/v1/cancelOrders"        
         payload = {
             "orderIds": order_ids
         }
-        path = "/v1/cancelOrders"
         resp = http_post(self.private_endpoint + path,
                          headers=self.get_api_header("POST", path, payload),
                          payload=payload)
@@ -284,7 +299,5 @@ def get_crypto_api_client(name, api_key, secret_key):
         return GmoApi(api_key, secret_key)
     elif name == Exchange.bitFlyer.name:
         return BitFlyerApi(api_key, secret_key)
-    elif name == Exchange.Simu.name:
-        return SimulationApi()
     else:
         raise ValueError(f"invalid name: {name}")
